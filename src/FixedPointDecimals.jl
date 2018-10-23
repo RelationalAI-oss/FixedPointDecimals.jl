@@ -80,6 +80,28 @@ for fn in [:trunc, :floor, :ceil]
 end
 
 """
+    max_exp10(T)
+
+The highest value of `x` which does not result in an overflow when evaluating `T(10)^x`. For
+types of `T` that do not overflow -1 will be returned.
+"""
+function max_exp10(::Type{T}) where {T <: Integer}
+    applicable(typemax, T) || return -1
+    W = widen(T)
+    type_max = W(typemax(T))
+
+    powt = one(W)
+    ten = W(10)
+    exponent = 0
+
+    while type_max > powt
+        powt *= ten
+        exponent += 1
+    end
+
+    exponent - 1
+end
+"""
     FixedDecimal{T <: Integer, f::Int}
 
 A fixed-point decimal type backed by integral type `T`, with `f` digits after
@@ -89,14 +111,21 @@ struct FixedDecimal{T <: Integer, f} <: Real
     i::T
 
     # inner constructor
-    function Base.reinterpret(::Type{FixedDecimal{T, f}}, i::Integer) where {T, f}
-        n = max_exp10(T)
-        if f >= 0 && (n < 0 || f <= n)
-            new{T, f}(i % T)
-        else
+    function Base.reinterpret(FD::Type{FixedDecimal{T, f}}, i::Integer) where {T, f}
+        static_check_T_big_enough(FD)  # Statically insert a throw if not big enough.
+        new{T, f}(i % T)
+    end
+end
+
+@generated function static_check_T_big_enough(::Type{FixedDecimal{T, f}}) where {T, f}
+    n = max_exp10(T)
+    if (f >= 0 && (n < 0 || f <= n))
+        return :()
+    else
+        return quote
             throw(ArgumentError(
-                "Requested number of decimal places $f exceeds the max allowed for the " *
-                "storage type $T: [0, $n]"
+                "Requested number of decimal places $($f) exceeds the max allowed for the " *
+                "storage type $($T): [0, $($n)]"
             ))
         end
     end
@@ -450,30 +479,6 @@ function parse_round(::Type{T}, fractional::AbstractString, ::RoundingMode{:Near
         end
     end
     return T(0)
-end
-
-
-"""
-    max_exp10(T)
-
-The highest value of `x` which does not result in an overflow when evaluating `T(10)^x`. For
-types of `T` that do not overflow -1 will be returned.
-"""
-@generated function max_exp10(::Type{T}) where {T <: Integer}
-    applicable(typemax, T) || return :(return -1)
-    W = widen(T)
-    type_max = W(typemax(T))
-
-    powt = one(W)
-    ten = W(10)
-    exponent = 0
-
-    while type_max > powt
-        powt *= ten
-        exponent += 1
-    end
-
-    return :(return $(exponent-1))
 end
 
 """
