@@ -484,6 +484,7 @@ function max_exp10(::Type{T}) where {T <: Integer}
 end
 
 max_exp10(::Type{BigInt}) = -1
+@eval max_exp10(::Type{Int128}) = $(max_exp10(Int128))  # Freeze this, because it depends on BigInt.
 
 """
     coefficient(::Type{FD{T, f}}) -> T
