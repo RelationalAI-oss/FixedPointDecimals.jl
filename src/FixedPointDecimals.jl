@@ -152,16 +152,33 @@ function _round_to_even(quotient::T, remainder::T, divisor::T) where {T <: Integ
         quotient
     end
 end
+
 _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 
 # multiplication rounds to nearest even representation
 # TODO: can we use floating point to speed this up? after we build a
 # correctness test suite.
 function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
-    powt = coefficient(FD{T, f})
-    quotient, remainder = fldmod(widemul(x.i, y.i), powt)
-    reinterpret(FD{T, f}, _round_to_even(quotient, remainder, powt))
+    inv_powt = inverse_coefficient(FD{T, f})
+    @show inv_powt
+    firstmul = widemul(x.i, y.i)
+    @show firstmul
+    huge_result = widemul(firstmul, inv_powt)
+    @show huge_result
+    #result = huge_result >> (8*sizeof(T))
+    result = rounding_bitshift(huge_result, 8*sizeof(T))
+    @show result
+    reinterpret(FD{T, f}, result)
 end
+
+function rounding_bitshift(x::T, s::Int) where {T<:Integer}
+    @show s
+    clipped = x >> s
+    @show clipped
+    ones = widen(T)(2)^s - 1
+    return _round_to_even(clipped, (x & ones), ones)
+end
+
 
 # these functions are needed to avoid InexactError when converting from the
 # integer type
@@ -494,6 +511,20 @@ constructable `FD{T, f}`.
 """
 coefficient(::Type{FD{T, f}}) where {T, f} = T(10)^f
 coefficient(fd::FD{T, f}) where {T, f} = coefficient(FD{T, f})
+
+
+"""
+    inverse_coefficient(::Type{FD{T, f}}) -> T
+
+Compute the fractional part of `1/10^f` as a binary number, rounded to the maximum
+precision.
+"""
+function inverse_coefficient(::Type{FD{T, f}}) where {T, f}
+    rounding_bitshift(typemax(unsigned(widen(T))) ÷ T(10)^f, 8*sizeof(T))
+end
+inverse_coefficient(fd::FD{T, f}) where {T, f} = inverse_coefficient(FD{T, f})
+
+
 value(fd::FD) = fd.i
 
 # for generic hashing
