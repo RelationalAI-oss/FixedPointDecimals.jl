@@ -160,22 +160,16 @@ _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 # correctness test suite.
 function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
     inv_powt = inverse_coefficient(FD{T, f})
-    @show inv_powt
     firstmul = widemul(x.i, y.i)
-    @show firstmul
     huge_result = widemul(firstmul, inv_powt)
-    @show huge_result
     #result = huge_result >> (8*sizeof(T))
     result = rounding_bitshift(huge_result, 8*sizeof(T))
-    @show result
     reinterpret(FD{T, f}, result)
 end
 
 function rounding_bitshift(x::T, s::Int) where {T<:Integer}
-    @show s
     clipped = x >> s
-    @show clipped
-    ones = widen(T)(2)^s - 1
+    ones = (widen(T)(2)^s - 1) % T
     return _round_to_even(clipped, (x & ones), ones)
 end
 
