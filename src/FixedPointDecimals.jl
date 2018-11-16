@@ -512,13 +512,15 @@ Base.widen(::Type{Int128}) = Int256
 Base.widen(::Type{UInt128}) = UInt256
 Base.unsigned(::Type{Int256}) = UInt256
 Base.signed(::Type{UInt256}) = Int256
+#Base.unsigned(::Type{Int512}) = UInt512
+#Base.signed(::Type{UInt512}) = Int512
 
 nbits(::Type{T}) where {T} = sizeof(T)*8
 nbits(x::T) where {T} = nbits(T)
 
 Base.@pure function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
     # Calculate 2^128/10^18
-    invcoef = typemax(widen(unsigned(T))) ÷ T(10^f)
+    invcoef = typemax(widen(unsigned(T))) ÷ T(10)^f
     nzeros = leading_zeros(invcoef)
     # return 2^nzeros * 2^128/10^18  (shift << by nzeros)
     # So later, we need to divide by 2^128 and 2^nzeros
@@ -538,6 +540,12 @@ narrow(::Type{UInt128}) = UInt64
 narrow(::Type{UInt64}) = UInt32
 narrow(::Type{UInt32}) = UInt16
 narrow(::Type{UInt16}) = UInt8
+
+# BitInteger improvements
+Base.isodd(a::Int256) = Base.isodd(a % Int8)  # only depends on the final bit! :)
+Base.iseven(a::Int256) = Base.iseven(a % Int8)  # only depends on the final bit! :)
+Base.isodd(a::Int512) = Base.isodd(a % Int8)  # only depends on the final bit! :)
+Base.iseven(a::Int512) = Base.iseven(a % Int8)  # only depends on the final bit! :)
 
 # -------------------------------------
 
