@@ -170,13 +170,13 @@ function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
     reinterpret(FD{T, f}, result % T)
 end
 
-function rounding_bitshift(x::T, s::Int) where {T<:Integer}
-    clipped = x >> s
+Base.@pure function rounding_bitshift(x::T, s::Val{N}) where {T<:Integer, N}
+    clipped = x >> N
     ones = shiftmask(T, s)
     return _round_to_even(clipped, (x & ones), ones)
 end
 
-Base.@pure shiftmask(::Type{T}, s::Int) where {T<:Integer} = (T(2)^s - T(1))
+Base.@pure shiftmask(::Type{T}, ::Val{N}) where {T<:Integer, N} = (T(2)^N - T(1))
 
 
 
@@ -541,7 +541,7 @@ Base.@pure function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
     # return 2^nzeros * 2^128/10^18  (shift << by nzeros)
     # So later, we need to divide by 2^128 and 2^nzeros
     # or, shift >> by (128+nzeros)
-    return (nbits(invcoef)+nzeros), invcoef << nzeros
+    return (Val(nbits(invcoef)+nzeros)), invcoef << nzeros
 end
 
 function decmul(a,b)
