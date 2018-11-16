@@ -164,13 +164,13 @@ function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
     reinterpret(FD{T, f}, result % T)
 end
 
-function rounding_bitshift(x::T, s::Val{N}) where {T<:Integer, N}
+Base.@pure function rounding_bitshift(x::T, s::Val{N}) where {T<:Integer, N}
     clipped = x >> N
     ones = shiftmask(T, s)
     return _round_to_even(clipped, (x & ones), ones)
 end
 
-shiftmask(::Type{T}, ::Val{N}) where {T<:Integer, N} = (T(2)^N - T(1))
+Base.@pure shiftmask(::Type{T}, ::Val{N}) where {T<:Integer, N} = (T(2)^N - T(1))
 
 
 
@@ -516,7 +516,7 @@ Base.signed(::Type{UInt256}) = Int256
 nbits(::Type{T}) where {T} = sizeof(T)*8
 nbits(x::T) where {T} = nbits(T)
 
-function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
+Base.@pure function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
     # Calculate 2^128/10^18
     invcoef = typemax(widen(unsigned(T))) ÷ T(10^f)
     nzeros = leading_zeros(invcoef)
