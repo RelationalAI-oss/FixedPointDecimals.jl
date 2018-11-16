@@ -156,27 +156,21 @@ end
 _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 
 # multiplication rounds to nearest even representation
-# TODO: can we use floating point to speed this up? after we build a
-# correctness test suite.
 function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
     toshift, inv_powt = precise_inv_coeff(FD{T, f})
-    #inv_powt = inverse_coefficient(FD{T, f})
     firstmul = widemul(x.i, y.i)
-    #u,l = split(firstmul)
     huge_result = widemul(firstmul, inv_powt)
-    #result = huge_result >> (8*sizeof(T))
     result = rounding_bitshift(huge_result, toshift)
-    #result = huge_result >> toshift
     reinterpret(FD{T, f}, result % T)
 end
 
-Base.@pure function rounding_bitshift(x::T, s::Val{N}) where {T<:Integer, N}
+function rounding_bitshift(x::T, s::Val{N}) where {T<:Integer, N}
     clipped = x >> N
     ones = shiftmask(T, s)
     return _round_to_even(clipped, (x & ones), ones)
 end
 
-Base.@pure shiftmask(::Type{T}, ::Val{N}) where {T<:Integer, N} = (T(2)^N - T(1))
+shiftmask(::Type{T}, ::Val{N}) where {T<:Integer, N} = (T(2)^N - T(1))
 
 
 
@@ -513,28 +507,16 @@ coefficient(::Type{FD{T, f}}) where {T, f} = T(10)^f
 coefficient(fd::FD{T, f}) where {T, f} = coefficient(FD{T, f})
 
 
-
 using BitIntegers
 Base.widen(::Type{Int128}) = Int256
 Base.widen(::Type{UInt128}) = UInt256
 Base.unsigned(::Type{Int256}) = UInt256
 Base.signed(::Type{UInt256}) = Int256
 
-# Have to compute (a*b)/10^18.
-# In hexadecimal, the reciprocal of 10^18 is:
-# 1/10^18 = 0.0000000000000012725DD1D243ABA0E75FE645CC4873F9E65AFE688C928E1F...
-# (Using 'bc' with 'obase=16 scale=128')
-# If we split this into octs, we see it is:
-#         = 0.0000000000000012 725DD1D243ABA0E7 5FE645CC4873F9E6 5AFE688C928E1F...
-# We want to use integer math to multiply by the reciprocal.  If we take the
-# leading digits:
-#         = 2^-192 * 2^8 * (12725DD1D243ABA0E75FE645CC4873F9.E65AFE688C928E1F)
-# Note that 10^36 = 0x00C097CE7BC90715 B34B9F1000000000
-# The top byte of the first oct is zero, so it is safe to shift b left by 8 bits.
 nbits(::Type{T}) where {T} = sizeof(T)*8
 nbits(x::T) where {T} = nbits(T)
 
-Base.@pure function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
+function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
     # Calculate 2^128/10^18
     invcoef = typemax(widen(unsigned(T))) ÷ T(10^f)
     nzeros = leading_zeros(invcoef)
@@ -544,16 +526,7 @@ Base.@pure function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
     return (Val(nbits(invcoef)+nzeros)), invcoef << nzeros
 end
 
-function decmul(a,b)
-
-end
-
 # ------------------------------------
-
-function intsplit(x::T) where T
-    OutType = narrow(T)
-    OutType(x>>nbits(OutType)), x % OutType
-end
 
 narrow(::Type{Int256}) = Int128
 narrow(::Type{Int128}) = Int64
