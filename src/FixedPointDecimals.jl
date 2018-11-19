@@ -157,11 +157,20 @@ _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 
 # multiplication rounds to nearest even representation
 function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
-    toshift, inv_powt = precise_inv_coeff(FD{T, f})
-    firstmul = widemul(x.i, y.i)
-    huge_result = widemul(firstmul, inv_powt)
-    result = rounding_bitshift(huge_result, toshift)
-    reinterpret(FD{T, f}, result % T)
+    #outsign = xor(signbit(x.i), signbit(y.i))
+    outsign = sign(x.i) * sign(y.i)
+    xi,yi = unsigned(x.i), unsigned(y.i)
+
+    toshift_up, toshift_lo, inv_powt = precise_inv_coeff(FD{T, f})
+    firstmul = widemul(xi, yi)
+    rup, rlo = splitwidemul(firstmul, inv_powt)
+    result = constshift(rup, toshift_up) + constshift(rlo, toshift_lo)
+    #result = rounding_bitshift(huge_result, toshift)
+    reinterpret(FD{T, f}, outsign * (result % T))
+end
+
+function constshift(x::T, s::Val{N}) where {T<:Integer, N}
+    return x >> N
 end
 
 Base.@pure function rounding_bitshift(x::T, s::Val{N}) where {T<:Integer, N}
@@ -172,6 +181,39 @@ end
 
 Base.@pure shiftmask(::Type{T}, ::Val{N}) where {T<:Integer, N} = (T(2)^N - T(1))
 
+function splitint(x::T) where {T<:Integer}
+    NT = narrow(T)
+    NT(x >> nbits(NT)), x % NT
+end
+#splitint(0xdeadbeef) == Int16(0xdead), Int16(0xbeef)
+
+
+# a1*bs1        0000000000000000 xxxxxxxxxxxxxxxx
+# a0*bs1+a1*bs0                  xxxxxxxxxxxxxxxx xxxxxxxxxxxxxxxx
+# a0*bs0                                          xxxxxxxxxxxxxxxx xxxxxxxxxxxxxxxx
+# The high oct of a1*bs1 is guaranteed to be zero, so this multiplication
+# can be done as an int64 operation.
+function splitwidemul(a::T, b::T) where {T<:Unsigned}
+    a1,a0 = splitint(a)
+    b1,b0 = splitint(b)
+    #@show a1,a0
+    #@show b1,b0
+    N = nbits(narrow(T))
+
+    #t2 = a1*b1  # int64 arithmetic  # TODO: shouldn't this just be 0?  I really think so..
+    #t1 = widemul(a0,b1) + widemul(a1,b0)  # no carry unless overflow  (TODO: action item?)
+    #t0 = widemul(a0,b0)
+    #@show t2,t1,t0
+    #return (T(t2) << nbits(b1)) + t1 + (t0 >> nbits(b1))   # This is [c2,c1].
+
+    t32 = widemul(a1,b1)  # TODO: Allow t3 to be 0s, since it's just gonna be overflow noise.
+    t21 = widemul(a1,b0) + widemul(a0,b1)
+    t10 = widemul(a0,b0)
+
+   # Handle possible carry in d2a+d2b
+   # c3 += T(c2 < c2a) << nbits(a1)  TODO: understand this
+   return t32 + (t21 >> N), (t21 << N) + t10  # Return [t3, t2], [t1, t0]
+end
 
 
 # these functions are needed to avoid InexactError when converting from the
@@ -525,7 +567,7 @@ Base.@pure function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
     # return 2^nzeros * 2^128/10^18  (shift << by nzeros)
     # So later, we need to divide by 2^128 and 2^nzeros
     # or, shift >> by (128+nzeros)
-    return (Val(nbits(invcoef)+nzeros)), invcoef << nzeros
+    return Val(nzeros), Val(nbits(invcoef)+nzeros), invcoef << nzeros
 end
 
 # ------------------------------------
