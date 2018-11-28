@@ -159,12 +159,14 @@ _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 function decmul_positive(xi::T, yi::T, ::Val{f}) where {T<:Unsigned, f}
     toshift, inv_powt = precise_inv_coeff(FD{T, f})
     firstmul = widemul(xi, yi)
-    rup, rlo = splitwidemul(firstmul, inv_powt)
+    #rup, rlo = splitwidemul(firstmul, inv_powt)
+    huge_result = widemul(firstmul, inv_powt)
     #huge_result = unsplitint(rup,rlo)
+    #@show toshift
     #@show huge_result
-    result = constshift(rup, toshift) + constshift_remainder(rup, toshift, rlo)
+    #result = constshift(rup, toshift) + constshift_remainder(rup, toshift, rlo)
     #result = constshift(rup, toshift_up) + constshift(rlo, toshift_lo)
-    #result = rounding_bitshift(huge_result, toshift)
+    result = rounding_bitshift(huge_result, toshift)
     #result = constshift(huge_result, toshift)
     return result
 end
@@ -199,8 +201,10 @@ end
 
 Base.@pure function rounding_bitshift(x::T, s::Val{N}) where {T<:Integer, N}
     clipped = x >> N
+    divisor = (one(T)+one(T))^N
     ones = shiftmask(T, s)
-    return _round_to_even(clipped, (x & ones), ones)
+    remainder = (x & ones)
+    return _round_to_even(clipped, remainder, divisor)
 end
 
 Base.@pure shiftmask(::Type{T}, ::Val{N}) where {T<:Integer, N} = (T(2)^N - T(1))
@@ -586,7 +590,7 @@ Base.@pure function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
     # return 2^nzeros * 2^128/10^18  (shift << by nzeros)
     # So later, we need to divide by 2^128 and 2^nzeros
     # or, shift >> by (128+nzeros)
-    return Val(nzeros), invcoef << nzeros
+    return Val(nbits(invcoef) + nzeros), invcoef << nzeros
 end
 
 # ------------------------------------
