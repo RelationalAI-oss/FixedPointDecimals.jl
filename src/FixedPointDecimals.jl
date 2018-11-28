@@ -156,17 +156,30 @@ end
 _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 
 # multiplication rounds to nearest even representation
-function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
-    #outsign = xor(signbit(x.i), signbit(y.i))
-    outsign = sign(x.i) * sign(y.i)
-    xi,yi = unsigned(x.i), unsigned(y.i)
-
+function decmul_positive(xi::T, yi::T, ::Val{f}) where {T<:Unsigned, f}
     toshift_up, toshift_lo, inv_powt = precise_inv_coeff(FD{T, f})
     firstmul = widemul(xi, yi)
     rup, rlo = splitwidemul(firstmul, inv_powt)
     result = constshift(rup, toshift_up) + constshift(rlo, toshift_lo)
     #result = rounding_bitshift(huge_result, toshift)
-    reinterpret(FD{T, f}, outsign * (result % T))
+    return result
+end
+function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
+    #outsign = xor(signbit(x.i), signbit(y.i))
+    x_sign,y_sign = x.i >> (nbits(T)-1), y.i >> (nbits(T)-1)
+    xi,yi = unsigned(x.i), unsigned(y.i)
+    if x_sign + y_sign == 0
+        return reinterpret(FD{T, f}, decmul_positive(xi, yi, Val(f)) % T)
+    else
+        #outsign = sign(x.i) * sign(y.i)
+        xi = x_sign == -1 ? -xi : xi
+        yi = y_sign == -1 ? -yi : yi
+        result = signed(decmul_positive(xi, yi, Val(f)))
+        if (x_sign + y_sign == -1)
+            result = -result;
+        end
+        return reinterpret(FD{T, f}, result % T)
+    end
 end
 
 function constshift(x::T, s::Val{N}) where {T<:Integer, N}
@@ -198,7 +211,7 @@ function splitwidemul(a::T, b::T) where {T<:Unsigned}
     b1,b0 = splitint(b)
     #@show a1,a0
     #@show b1,b0
-    N = nbits(narrow(T))
+    N = nbits(narrow(T))   # This is a Const, calculated at compile time.
 
     #t2 = a1*b1  # int64 arithmetic  # TODO: shouldn't this just be 0?  I really think so..
     #t1 = widemul(a0,b1) + widemul(a1,b0)  # no carry unless overflow  (TODO: action item?)
