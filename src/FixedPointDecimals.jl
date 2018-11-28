@@ -157,11 +157,15 @@ _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 
 # multiplication rounds to nearest even representation
 function decmul_positive(xi::T, yi::T, ::Val{f}) where {T<:Unsigned, f}
-    toshift_up, toshift_lo, inv_powt = precise_inv_coeff(FD{T, f})
+    toshift, inv_powt = precise_inv_coeff(FD{T, f})
     firstmul = widemul(xi, yi)
     rup, rlo = splitwidemul(firstmul, inv_powt)
-    result = constshift(rup, toshift_up) + constshift(rlo, toshift_lo)
+    #huge_result = unsplitint(rup,rlo)
+    #@show huge_result
+    result = constshift(rup, toshift) + constshift_remainder(rup, toshift, rlo)
+    #result = constshift(rup, toshift_up) + constshift(rlo, toshift_lo)
     #result = rounding_bitshift(huge_result, toshift)
+    #result = constshift(huge_result, toshift)
     return result
 end
 function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
@@ -184,6 +188,13 @@ end
 
 function constshift(x::T, s::Val{N}) where {T<:Integer, N}
     return x >> N
+end
+function constshift_remainder(up::T, s::Val{N}, lo::T) where {T<:Integer, N}
+    if (N > 0)
+        return (up >> (N-1)) & 0x1
+    else
+        return (lo >> (nbits(T)-1)) & 0x1
+    end
 end
 
 Base.@pure function rounding_bitshift(x::T, s::Val{N}) where {T<:Integer, N}
@@ -228,6 +239,10 @@ function splitwidemul(a::T, b::T) where {T<:Unsigned}
    return t32 + (t21 >> N), (t21 << N) + t10  # Return [t3, t2], [t1, t0]
 end
 
+function unsplitint(up::T, lo::T) where T<:Unsigned
+    N = nbits(T)   # This is a Const, calculated at compile time.
+    return widen(up)<<N + widen(lo)
+end
 
 # these functions are needed to avoid InexactError when converting from the
 # integer type
@@ -571,7 +586,7 @@ Base.@pure function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
     # return 2^nzeros * 2^128/10^18  (shift << by nzeros)
     # So later, we need to divide by 2^128 and 2^nzeros
     # or, shift >> by (128+nzeros)
-    return Val(nzeros), Val(nbits(invcoef)+nzeros), invcoef << nzeros
+    return Val(nzeros), invcoef << nzeros
 end
 
 # ------------------------------------
