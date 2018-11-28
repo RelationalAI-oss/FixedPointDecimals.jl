@@ -967,3 +967,7 @@ end
 end
 
 end  # global testset
+
+# This is outside the global testset so that we only run the fuzz tests if all
+# the normal tests passed.
+include("fuzz-tests.jl")
