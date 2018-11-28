@@ -599,21 +599,21 @@ narrow(::Type{UInt64}) = UInt32
 narrow(::Type{UInt32}) = UInt16
 narrow(::Type{UInt16}) = UInt8
 
-#using BitIntegers
-#Base.widen(::Type{Int128}) = Int256
-#Base.widen(::Type{UInt128}) = UInt256
-#Base.unsigned(::Type{Int256}) = UInt256
-#Base.signed(::Type{UInt256}) = Int256
-##Base.unsigned(::Type{Int512}) = UInt512
-##Base.signed(::Type{UInt512}) = Int512
-#
-#narrow(::Type{Int256}) = Int128
-#narrow(::Type{UInt256}) = UInt128
-## BitInteger improvements
-#Base.isodd(a::Int256) = Base.isodd(a % Int8)  # only depends on the final bit! :)
-#Base.iseven(a::Int256) = Base.iseven(a % Int8)  # only depends on the final bit! :)
-#Base.isodd(a::Int512) = Base.isodd(a % Int8)  # only depends on the final bit! :)
-#Base.iseven(a::Int512) = Base.iseven(a % Int8)  # only depends on the final bit! :)
+using BitIntegers
+Base.widen(::Type{Int128}) = Int256
+Base.widen(::Type{UInt128}) = UInt256
+Base.unsigned(::Type{Int256}) = UInt256
+Base.signed(::Type{UInt256}) = Int256
+#Base.unsigned(::Type{Int512}) = UInt512
+#Base.signed(::Type{UInt512}) = Int512
+
+narrow(::Type{Int256}) = Int128
+narrow(::Type{UInt256}) = UInt128
+# BitInteger improvements
+Base.isodd(a::Int256) = Base.isodd(a % Int8)  # only depends on the final bit! :)
+Base.iseven(a::Int256) = Base.iseven(a % Int8)  # only depends on the final bit! :)
+Base.isodd(a::Int512) = Base.isodd(a % Int8)  # only depends on the final bit! :)
+Base.iseven(a::Int512) = Base.iseven(a % Int8)  # only depends on the final bit! :)
 
 # -------------------------------------
 
