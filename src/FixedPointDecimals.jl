@@ -158,15 +158,20 @@ _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 # multiplication rounds to nearest even representation
 function decmul_positive(xi::T, yi::T, ::Val{f}) where {T<:Unsigned, f}
     toshift, inv_powt = precise_inv_coeff(FD{T, f})
+    #@show inv_powt
+    #@show toshift
     firstmul = widemul(xi, yi)
     #rup, rlo = splitwidemul(firstmul, inv_powt)
     huge_result = widemul(firstmul, inv_powt)
+    #huge_result = round(huge_result, digits = ndigits(xi), base=2)
     #huge_result = unsplitint(rup,rlo)
     #@show toshift
     #@show huge_result
+    shiftedresult = rounding_bitshift(huge_result, Val(nbits(inv_powt)))
+    #@show shiftedresult
     #result = constshift(rup, toshift) + constshift_remainder(rup, toshift, rlo)
     #result = constshift(rup, toshift_up) + constshift(rlo, toshift_lo)
-    result = rounding_bitshift(huge_result, toshift)
+    result = rounding_bitshift(shiftedresult, toshift)
     #result = constshift(huge_result, toshift)
     return result
 end
@@ -201,11 +206,24 @@ end
 
 Base.@pure function rounding_bitshift(x::T, s::Val{N}) where {T<:Integer, N}
     clipped = x >> N
-    divisor = (one(T)+one(T))^N
-    ones = shiftmask(T, s)
+    divisor = (one(T)+one(T))^N  # Const
+    ones = shiftmask(T, s)  # Const
     remainder = (x & ones)
+    #@show clipped, remainder, divisor
     return _round_to_even(clipped, remainder, divisor)
 end
+
+#function _round_to_even_with_even_divisor(quotient::T, remainder::T, divisor::T) where {T <: Integer}
+#    halfdivisor = divisor >> 1
+#    # We know the divisor is always even since we're dividing by 2^N
+#    if #= iseven(divisor) && =# remainder == halfdivisor
+#        ifelse(iseven(quotient), quotient, quotient + one(quotient))
+#    elseif abs(remainder) > abs(halfdivisor)
+#        quotient + one(quotient)
+#    else
+#        quotient
+#    end
+#end
 
 Base.@pure shiftmask(::Type{T}, ::Val{N}) where {T<:Integer, N} = (T(2)^N - T(1))
 
@@ -585,12 +603,16 @@ nbits(x::T) where {T} = nbits(T)
 
 Base.@pure function precise_inv_coeff(::Type{FD{T, f}}) where {T, f}
     # Calculate 2^128/10^18
-    invcoef = typemax(widen(unsigned(T))) ÷ T(10)^f
-    nzeros = leading_zeros(invcoef)
+    WT = widen(unsigned(T))
+    WWT = widen(WT)
     # return 2^nzeros * 2^128/10^18  (shift << by nzeros)
+    invcoef = typemax(WWT) ÷ WWT(10)^f
+    nzeros = leading_zeros(invcoef)
+    invcoef = invcoef << nzeros
+    invcoef = WT(invcoef >> nbits(WT))
     # So later, we need to divide by 2^128 and 2^nzeros
     # or, shift >> by (128+nzeros)
-    return Val(nbits(invcoef) + nzeros), invcoef << nzeros
+    return Val(#=nbits(invcoef) +=# nzeros), invcoef
 end
 
 # ------------------------------------
