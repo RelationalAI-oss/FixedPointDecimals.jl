@@ -38,6 +38,31 @@ import Base: reinterpret, zero, one, abs, sign, ==, <, <=, +, -, /, *, div, rem,
 
 include("fldmod_by_const.jl")
 
+# =========================================================
+# Set Int128 to widen to Int256 within FixedPointDecimals to avoid allocations from BigInt.
+# ---------------------------------------
+
+import BitIntegers
+
+# BitIntegers is missing unsigned(::Type{Int256})
+Base.unsigned(x::T) where T<:BitIntegers.XBS = reinterpret(unsigned(T), x)
+Base.unsigned(::Type{T}) where T<:BitIntegers.XBS = typeof(convert(Unsigned, zero(T)))
+
+# BitIntegers is missing iseven/isodd
+# Prevent expensive calculation for Int256
+Base.isodd(a::BitIntegers.Int256) = Base.isodd(a % Int)  # only depends on the final bit! :)
+
+_widen(T::Type) = widen(T)
+_widen(x::T) where {T} = (_widen(T))(x)
+_widen(::Type{Int128}) = BitIntegers.Int256
+_widen(::Type{UInt128}) = BitIntegers.UInt256
+
+_widemul(a,b) = _widen(a)*_widen(b)
+
+narrow(::Type{BitIntegers.Int256}) = Int128
+narrow(::Type{BitIntegers.UInt256}) = UInt128
+# =========================================================
+
 const BitInteger = Union{Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64,
                          UInt64, Int128, UInt128}
 
@@ -127,11 +152,11 @@ abs(x::FD{T, f}) where {T, f} = reinterpret(FD{T, f}, abs(x.i))
 
 # wide multiplication
 Base.@pure function widemul(x::FD{<:Any, f}, y::FD{<:Any, g}) where {f, g}
-    i = widemul(x.i, y.i)
+    i = _widemul(x.i, y.i)
     reinterpret(FD{typeof(i), f + g}, i)
 end
 Base.@pure function widemul(x::FD{T, f}, y::Integer) where {T, f}
-    i = widemul(x.i, y)
+    i = _widemul(x.i, y)
     reinterpret(FD{typeof(i), f}, i)
 end
 Base.@pure widemul(x::Integer, y::FD) = widemul(y, x)
@@ -167,7 +192,7 @@ _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 # correctness test suite.
 function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
     powt = coefficient(FD{T, f})
-    quotient, remainder = custom_fldmod(widemul(x.i, y.i), powt)
+    quotient, remainder = custom_fldmod(_widemul(x.i, y.i), powt)
     reinterpret(FD{T, f}, _round_to_even(quotient, remainder, powt))
 end
 
@@ -188,7 +213,7 @@ end
 
 function /(x::FD{T, f}, y::FD{T, f}) where {T, f}
     powt = coefficient(FD{T, f})
-    quotient, remainder = fldmod(widemul(x.i, powt), y.i)
+    quotient, remainder = fldmod(_widemul(x.i, powt), y.i)
     reinterpret(FD{T, f}, T(_round_to_even(quotient, remainder, y.i)))
 end
 
@@ -196,8 +221,8 @@ end
 # FixedDecimal.
 function /(x::Integer, y::FD{T, f}) where {T, f}
     powt = coefficient(FD{T, f})
-    powtsq = widemul(powt, powt)
-    quotient, remainder = fldmod(widemul(x, powtsq), y.i)
+    powtsq = _widemul(powt, powt)
+    quotient, remainder = fldmod(_widemul(x, powtsq), y.i)
     reinterpret(FD{T, f}, T(_round_to_even(quotient, remainder, y.i)))
 end
 
@@ -292,7 +317,7 @@ end
 convert(::Type{FD{T, f}}, x::FD{T, f}) where {T, f} = x  # Converting an FD to itself is a no-op
 
 function convert(::Type{FD{T, f}}, x::Integer) where {T, f}
-    reinterpret(FD{T, f}, T(widemul(x, coefficient(FD{T, f}))))
+    reinterpret(FD{T, f}, T(_widemul(x, coefficient(FD{T, f}))))
 end
 
 convert(::Type{T}, x::AbstractFloat) where {T <: FD} = round(T, x)
@@ -306,7 +331,7 @@ function convert(::Type{FD{T, f}}, x::FD{U, g}) where {T, f, U, g}
     if f ≥ g
         # Compute `10^(f - g)` without overflow
         powt = div(coefficient(FD{T, f}), coefficient(FD{U, g}))
-        reinterpret(FD{T, f}, T(widemul(x.i, powt)))
+        reinterpret(FD{T, f}, T(_widemul(x.i, powt)))
     else
         # Compute `10^(g - f)` without overflow
         powt = div(coefficient(FD{U, g}), coefficient(FD{T, f}))
@@ -489,7 +514,7 @@ types of `T` that do not overflow -1 will be returned.
 # state. The value will never change for a given (type,precision) pair.
 # This allows its result to be const-folded away when called with Const values.
 Base.@pure function max_exp10(::Type{T}) where {T <: Integer}
-    W = widen(T)
+    W = _widen(T)
     type_max = W(typemax(T))
 
     powt = one(W)
@@ -505,6 +530,7 @@ Base.@pure function max_exp10(::Type{T}) where {T <: Integer}
 end
 
 max_exp10(::Type{BigInt}) = -1
+@eval max_exp10(::Type{Int128}) = $(max_exp10(Int128))
 
 """
     coefficient(::Type{FD{T, f}}) -> T
