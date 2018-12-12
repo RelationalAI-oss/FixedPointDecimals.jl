@@ -23,7 +23,6 @@ Base.@pure function calculate_inv_coeff(::Type{T}, f) where {T}
 end
 # These are needed to handle Int128, which widens to BigInt, since BigInt doesn't have typemax
 twoToTheSizeOf(::Type{T}) where {T} = typemax(widen(unsigned(T)))
-twoToTheSizeOf(::Union{Type{Int128}, Type{UInt128}}) = BigInt(2)^256
 twoToTheSizeOf(::Type{BigInt}) = BigInt(2)^256
 
 # This special-purpose leading_zeros is needed to handle Int128, which widens to BigInt
@@ -61,10 +60,10 @@ nbits(x) = sizeof(x)*8
     halfT = typeof(ah)
     halfbits = nbits(al)
     # /* compute partial products */
-    p0 = widemul(al, bl);
-    p1 = widemul(al, bh);
-    p2 = widemul(ah, bl);
-    p3 = widemul(ah, bh);
+    p0 = _widemul(al, bl);
+    p1 = _widemul(al, bh);
+    p2 = _widemul(ah, bl);
+    p3 = _widemul(ah, bh);
     # /* sum partial products */
     carry = ((p0 >> halfbits) + (p1%halfT) + (p2%halfT)) >> halfbits;
     return p3 + (p2 >> halfbits) + (p1 >> halfbits) + carry;
