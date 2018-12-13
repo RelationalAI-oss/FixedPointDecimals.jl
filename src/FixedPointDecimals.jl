@@ -44,13 +44,19 @@ include("fldmod_by_const.jl")
 
 import BitIntegers
 
+# ---------- Necessary Extensions -----------------------
+# TODO: delete these once https://github.com/rfourquet/BitIntegers.jl/pull/2 and
+# https://github.com/rfourquet/BitIntegers.jl/pull/3 are merged.
+
 # BitIntegers is missing unsigned(::Type{Int256})
-Base.unsigned(x::T) where T<:BitIntegers.XBS = reinterpret(unsigned(T), x)
-Base.unsigned(::Type{T}) where T<:BitIntegers.XBS = typeof(convert(Unsigned, zero(T)))
+# XBI == Union{BitIntegers.AbstractBitSigned, BitIntegers.AbstractBitUnsigned}
+Base.unsigned(::Type{T}) where T<:BitIntegers.XBI = typeof(convert(Unsigned, zero(T)))
+Base.unsigned(x::T) where T<:BitIntegers.XBI = reinterpret(unsigned(T), x)
 
 # BitIntegers is missing iseven/isodd
-# Prevent expensive calculation for Int256
+# Prevent expensive calculation for Int256. Needed since `_round_to_even` calls `iseven`.
 Base.isodd(a::BitIntegers.Int256) = Base.isodd(a % Int)  # only depends on the final bit! :)
+# -------------------------------------------------------
 
 _widen(T::Type) = widen(T)
 _widen(x::T) where {T} = (_widen(T))(x)
