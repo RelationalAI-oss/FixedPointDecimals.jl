@@ -21,11 +21,11 @@ Base.@pure function calculate_inv_coeff(::Type{T}, f) where {T}
     invcoeff = _round_to_even(fldmod(invcoeff, typemax(UT))..., typemax(UT)) % T
     return invcoeff, toshift
 end
-# These are needed to handle Int128, which widens to BigInt, since BigInt doesn't have typemax
+# These are needed to handle BigInt, since BigInt doesn't have typemax
 twoToTheSizeOf(::Type{T}) where {T} = typemax(widen(unsigned(T)))
 twoToTheSizeOf(::Type{BigInt}) = BigInt(2)^256
 
-# This special-purpose leading_zeros is needed to handle Int128, which widens to BigInt
+# This special-purpose leading_zeros is needed to handle BigInt
 _leading_zeros(x) = leading_zeros(x)
 # BigInt doesn't have a concept of "leading zeros", but since we _know_ the value being
 # passed here will fit in 256-bits (per twoToTheSizeOf), we can pretend this is a 256-bit
