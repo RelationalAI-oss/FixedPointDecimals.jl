@@ -22,7 +22,7 @@ Base.@pure function calculate_inv_coeff(::Type{T}, f) where {T}
     return invcoeff, toshift
 end
 # These are needed to handle BigInt, since BigInt doesn't have typemax
-twoToTheSizeOf(::Type{T}) where {T} = typemax(widen(unsigned(T)))
+twoToTheSizeOf(::Type{T}) where {T} = typemax(_widen(unsigned(T)))
 twoToTheSizeOf(::Type{BigInt}) = BigInt(2)^256
 
 # This special-purpose leading_zeros is needed to handle BigInt
@@ -65,8 +65,8 @@ nbits(x) = sizeof(x)*8
     p2 = _widemul(ah, bl);
     p3 = _widemul(ah, bh);
     # /* sum partial products */
-    cy = ((p0 >> halfbits) + (p1%halfT) + (p2%halfT)) >> halfbits;
-    return p3 + (p2 >> halfbits) + (p1 >> halfbits) + cy;
+    carry = ((p0 >> halfbits) + (p1%halfT) + (p2%halfT)) >> halfbits;
+    return p3 + (p2 >> halfbits) + (p1 >> halfbits) + carry;
 end
 @inline function splitmul_upper(a::T, b::T) where T<:Unsigned
     return unsigned_splitmul_upper(a,b)
