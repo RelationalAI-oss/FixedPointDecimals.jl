@@ -27,14 +27,10 @@ module FixedPointDecimals
 
 export FixedDecimal, RoundThrows
 
-using Compat: lastindex, something
-
-import Compat: floatmin, floatmax
-
 import Base: reinterpret, zero, one, abs, sign, ==, <, <=, +, -, /, *, div, rem, divrem,
              fld, mod, fldmod, fld1, mod1, fldmod1, isinteger, typemin, typemax,
              print, show, string, convert, parse, promote_rule, min, max,
-             trunc, round, floor, ceil, eps, float, widemul, decompose
+             floatmin, floatmax, trunc, round, floor, ceil, eps, float, widemul, decompose
 
 include("fldmod_by_const.jl")
 
@@ -187,29 +183,11 @@ function _round_to_even(quotient::T, remainder::T, divisor::T) where {T <: Integ
 end
 _round_to_even(q, r, d) = _round_to_even(promote(q, r, d)...)
 
-# In many of our calls to fldmod, `y` is a constant (the coefficient, 10^f). However, since
-# `fldmod` is sometimes not being inlined, that constant information is not available to the
-# optimizer. We need an inlined version of fldmod so that the compiler can replace expensive
-# divide-by-power-of-ten instructions with the cheaper multiply-by-inverse-coefficient.
-@inline fldmodinline(x,y) = (fld(x,y), mod(x,y))
-
 # multiplication rounds to nearest even representation
-# TODO: can we use floating point to speed this up? after we build a
-# correctness test suite.
 function *(x::FD{T, f}, y::FD{T, f}) where {T, f}
     powt = coefficient(FD{T, f})
-    quotient, remainder = custom_fldmod(_widemul(x.i, y.i), powt)
+    quotient, remainder = fldmod_by_const(_widemul(x.i, y.i), powt)
     reinterpret(FD{T, f}, _round_to_even(quotient, remainder, powt))
-end
-
-@inline function custom_fldmod(x::T,y) where T
-    # This check will be compiled away during specialization
-    if sizeof(T) <= sizeof(Int) || T <: BigInt
-        return fldmodinline(x, y)
-    else
-        # For large Ts LLVM doesn't optimize well, so use a custom implementation.
-        return fldmod_by_const(x, Val(y))
-    end
 end
 
 # these functions are needed to avoid InexactError when converting from the
@@ -244,12 +222,12 @@ floor(x::FD{T, f}) where {T, f} = FD{T, f}(fld(x.i, coefficient(FD{T, f})))
 # TODO: round with number of digits; should be easy
 function round(x::FD{T, f}, ::RoundingMode{:Nearest}=RoundNearest) where {T, f}
     powt = coefficient(FD{T, f})
-    quotient, remainder = custom_fldmod(x.i, powt)
+    quotient, remainder = fldmod_by_const(x.i, powt)
     FD{T, f}(_round_to_even(quotient, remainder, powt))
 end
 function ceil(x::FD{T, f}) where {T, f}
     powt = coefficient(FD{T, f})
-    quotient, remainder = custom_fldmod(x.i, powt)
+    quotient, remainder = fldmod_by_const(x.i, powt)
     if remainder > 0
         FD{T, f}(quotient + one(quotient))
     else
@@ -266,14 +244,7 @@ as a floating point number.
 This is equivalent to counting the number of bits needed to represent the
 integer, excluding any trailing zeros.
 """
-required_precision(::Integer)
-
-# https://github.com/JuliaLang/julia/pull/27908
-if VERSION < v"0.7.0-beta.183"
-    required_precision(n::Integer) = ndigits(n, 2) - trailing_zeros(n)
-else
-    required_precision(n::Integer) = ndigits(n, base=2) - trailing_zeros(n)
-end
+required_precision(n::Integer) = ndigits(n, base=2) - trailing_zeros(n)
 
 """
     _apply_exact_float(f, T, x::Real, i::Integer)
@@ -354,7 +325,9 @@ for remfn in [:rem, :mod, :mod1, :min, :max]
     @eval $remfn(x::T, y::T) where {T <: FD} = reinterpret(T, $remfn(x.i, y.i))
 end
 for divfn in [:div, :fld, :fld1]
-    @eval $divfn(x::T, y::T) where {T <: FD} = $divfn(x.i, y.i)
+    # div(x.i, y.i) eliminates the scaling coefficient, so we call the FD constructor.
+    # We don't need any widening logic, since we won't be multiplying by the coefficient.
+    @eval $divfn(x::T, y::T) where {T <: FD} = T($divfn(x.i, y.i))
 end
 
 convert(::Type{AbstractFloat}, x::FD) = convert(floattype(typeof(x)), x)
@@ -517,7 +490,7 @@ The highest value of `x` which does not result in an overflow when evaluating `T
 types of `T` that do not overflow -1 will be returned.
 """
 function max_exp10(::Type{T}) where {T <: Integer}
-    W = _widen(T)
+    W = widen(T)
     type_max = W(typemax(T))
 
     powt = one(W)
